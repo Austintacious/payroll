@@ -31,6 +31,11 @@ class Employee
   def calculate_monthly_salary
     format_number(@salary.to_f/12)
   end
+# We dont want to add anything like commibonus in Employee. Because we'll use super to grab the calculate_monthly_salary
+# in the child classes and then add the things like commibonus in their appropriate classes
+  # def calculate_gross
+  #   gross = monthly_salary + commibonus
+  # end
 
   def calculate_net_pay
     format_number(calculate_monthly_salary.to_f - (calculate_monthly_salary.to_f * @@tax))
@@ -61,13 +66,12 @@ class Owner < Employee
 end
 
 class Commission < Employee
-  def initialize
-    determine_commission
-  end
   
   def determine_commission
-    
+    @commibonus*@salary
   end 
+
+
 end
 
 class Quota < Employee
@@ -114,7 +118,7 @@ class Payroll
     puts "***#{@employees[employee].name}***"
     puts "Gross Salary: $#{@employees[employee].calculate_monthly_salary}"
     puts "Net Pay: $#{@employees[employee].calculate_net_pay}"
-    puts "***"
+    puts "--------------------"
   end
 end
 

@@ -2,15 +2,37 @@ require 'CSV'
 
 class CsvReader
   def initialize(file)
-    @file = file
+    if File.exists?(file)
+      @file = file
+    else
+      raise "File does not exist."
+    end
   end
 
-  def parse
-    temp_array = []
-    CSV.foreach(@file, headers:true) do |row|
-      temp_array << row
+  def parse_employees
+    headers = CSV.open(@file, 'r') { |csv| csv.first }
+    unless headers == ["name", "type", "salary", "commibonus", "quota"]
+      raise "Not a valid Employee CSV file. Please ensure the headers include 'name', 'type', 'salary', 'commibonus', and 'quota'."
+    else
+      temp_array = []
+      CSV.foreach(@file, headers:true) do |row|
+        temp_array << row
+      end
+      temp_array
     end
-    temp_array
+  end
+
+  def parse_sales
+    headers = CSV.open(@file, 'r') { |csv| csv.first }
+    unless headers == ["last_name", "gross_sale_value"]
+      raise "Not a valid Sales CSV file. Please ensure the headers include 'last_name' and 'gross_sale_value'."
+    else
+      temp_array = []
+      CSV.foreach(@file, headers:true) do |row|
+        temp_array << row
+      end
+      temp_array
+    end
   end
 end
 
@@ -31,11 +53,6 @@ class Employee
   def calculate_monthly_salary
     format_number(@salary.to_f/12)
   end
-# We dont want to add anything like commibonus in Employee. Because we'll use super to grab the calculate_monthly_salary
-# in the child classes and then add the things like commibonus in their appropriate classes
-  # def calculate_gross
-  #   gross = monthly_salary + commibonus
-  # end
 
   def calculate_net_pay
     format_number(calculate_monthly_salary.to_f - (calculate_monthly_salary.to_f * @@tax))
@@ -48,33 +65,78 @@ class Employee
 end
 
 class Owner < Employee
-  @monthly_quota = 250000
 
-  def find_gross_sale_value(file)
-    sales_data = CsvReader.new(file).parse
-    @gross_sales = []
-    sales_data.each do |row|
-      @gross_sales << row["gross_sale_value"].to_i
-    end
-    @gross_sales.reduce(:+)
+  def calculate_net_pay
+    super.to_f + (bonus - (bonus*@@tax))
   end
 
-  def check_bonus?(amount)
-    amount > @monthly_quota
+  def get_csv(file)
+    @sales = file
+  end
+
+  def check_bonus?
+    Sale.new(@sales).monthly_sales > 250000
+  end
+
+  def bonus
+    @commibonus.to_f if check_bonus?
   end
 
 end
 
 class Commission < Employee
-  
+  def calculate_net_pay
+    super.to_f + (determine_commission - (determine_commission*@@tax))
+  end
+
   def determine_commission
-    @commibonus*@salary
-  end 
+    @commibonus.to_f*Sale.new(@sales).monthly_sales(@name).to_f
+  end
 
-
+  def get_csv(sales)
+    @sales = sales
+  end
 end
 
 class Quota < Employee
+
+  def calculate_net_pay
+    super.to_f + (bonus - (bonus*@@tax))
+  end
+
+  def get_csv(sales)
+    @sales = sales
+  end
+
+  def bonus
+    check_bonus? ? @commibonus.to_f : 0
+  end
+
+  def check_bonus?
+    Sale.new(@sales).monthly_sales(@name).to_f >= @quota.to_f
+  end
+end
+
+class Sale
+  def initialize(file)
+    @sales = CsvReader.new(file).parse_sales
+  end
+
+  def monthly_sales(name=nil)
+    if name.nil?
+      @gross_sales = []
+      @sales.each do |row|
+        @gross_sales << row["gross_sale_value"].to_f
+      end
+      @gross_sales.reduce(:+)
+    else
+      temp_array = []
+      @sales.each do |row|
+        temp_array << row["gross_sale_value"].to_f if row["last_name"] == name.split(' ')[1]
+      end
+      temp_array.reduce(:+)
+    end
+  end
 end
 
 class Payroll
@@ -88,16 +150,19 @@ class Payroll
   end
 
   def populate_employees
-    employees = CsvReader.new(@employeesfile).parse
+    employees = CsvReader.new(@employeesfile).parse_employees
     employees.each do |row|
       var = row["type"]
 
       if var == "owner"
         @employees[row["name"]] = Owner.new(row)
+        @employees[row["name"]].get_csv(@sales)
       elsif var == "commission"
         @employees[row["name"]] = Commission.new(row)
+        @employees[row["name"]].get_csv(@sales)
       elsif var == "quota"
         @employees[row["name"]] = Quota.new(row)
+        @employees[row["name"]].get_csv(@sales)
       else
         @employees[row["name"]] = Employee.new(row)
       end
@@ -110,13 +175,15 @@ class Payroll
   end
 
   def find_monthly_gross
-    @employees["Charles Burns"].find_gross_sale_value(@sales)
+    puts Sale.new(@sales).monthly_sales
   end
 
   def monthly_salary(employee)
-    monthly_salary unless @employees.include?(employee)
+    raise "Employee is not found. Did you run populate_employees?" unless @employees.include?(employee)
     puts "***#{@employees[employee].name}***"
     puts "Gross Salary: $#{@employees[employee].calculate_monthly_salary}"
+    puts "Commission: $#{@employees[employee].determine_commission}" if @employees[employee].class == Commission
+    puts "Bonus: $#{@employees[employee].bonus}" if @employees[employee].class == Owner || @employees[employee].class == Quota
     puts "Net Pay: $#{@employees[employee].calculate_net_pay}"
     puts "--------------------"
   end
@@ -126,5 +193,7 @@ powerplant = Payroll.new('sales_data.csv','employees.csv')
 powerplant.populate_employees
 powerplant.list_employees
 puts '~~~~~~~~~~~~~~~'
-puts powerplant.find_monthly_gross
-puts powerplant.monthly_salary("Jimmy McMahon")
+powerplant.monthly_salary("Bob Lob")
+powerplant.monthly_salary("Jimmy McMahon")
+powerplant.monthly_salary("Charles Burns")
+powerplant.monthly_salary("Clancy Wiggum")

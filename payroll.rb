@@ -61,7 +61,6 @@ class Employee
   def format_number(num)
     sprintf('%0.2f', num)
   end
-
 end
 
 class Owner < Employee
@@ -81,7 +80,6 @@ class Owner < Employee
   def bonus
     @commibonus.to_f if check_bonus?
   end
-
 end
 
 class Commission < Employee
